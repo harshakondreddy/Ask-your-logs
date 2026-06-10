@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-log-router
+  namespace: ai-log-router
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-log-router
+  template:
+    metadata:
+      labels:
+        app: ai-log-router
+    spec:
+      containers:
+        - name: ai-log-router
+          image: your-registry/ai-log-router:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: ai-log-router-config
+            - secretRef:
+                name: ai-log-router-secret
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20

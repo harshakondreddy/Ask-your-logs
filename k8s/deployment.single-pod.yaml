@@ -1,0 +1,140 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-log-router
+  labels:
+    app: ai-log-router
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: ai-log-router
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: ai-log-router
+    spec:
+      terminationGracePeriodSeconds: 30
+      imagePullSecrets:
+        - name: intelligrepo
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ai-log-router
+          image: igs-wms-docker-stable-local.artifactory-na.honeywell.com/ai-log-router:0.1.3
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          env:
+            - name: ELASTICSEARCH_URL
+              value: "https://elasticsearch-client.essential.svc.cluster.local:9201"
+            - name: ELASTICSEARCH_INDEX
+              value: "fluent-bit-*"
+            - name: ELASTICSEARCH_TIMESTAMP_FIELD
+              value: "@timestamp"
+            - name: ELASTICSEARCH_VERIFY_CERTS
+              value: "false"
+            - name: ELASTICSEARCH_CA_CERT_PATH
+              value: ""
+            - name: REQUEST_TIMEOUT_SECONDS
+              value: "30"
+            - name: MAX_LOGS_LIMIT
+              value: "10"
+            - name: LLM_PROVIDER
+              value: "ollama"
+            - name: GEMINI_MODEL
+              value: "gemini-flash-latest"
+            - name: OPENAI_MODEL
+              value: "gpt-4o-mini"
+            - name: AZURE_OPENAI_API_VERSION
+              value: "2024-02-01"
+            - name: OLLAMA_BASE_URL
+              value: "http://ollama-gemma3-4b.essential.svc.cluster.local:18080"
+            - name: OLLAMA_MODEL
+              value: "gemma3:4b"
+            - name: OLLAMA_TIMEOUT_SECONDS
+              value: "600"
+            - name: ELASTICSEARCH_USERNAME
+              value: "elastic"
+            - name: ELASTICSEARCH_PASSWORD
+              value: "1ZBcgIwh9yl8BYNkUfFi"
+            - name: GEMINI_API_KEY
+              value: ""
+            - name: OPENAI_API_KEY
+              value: ""
+            - name: AZURE_OPENAI_API_KEY
+              value: ""
+            - name: AZURE_OPENAI_ENDPOINT
+              value: ""
+            - name: AZURE_OPENAI_DEPLOYMENT
+              value: ""
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-log-router
+  labels:
+    app: ai-log-router
+spec:
+  type: NodePort
+  selector:
+    app: ai-log-router
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      nodePort: 30450
+      protocol: TCP

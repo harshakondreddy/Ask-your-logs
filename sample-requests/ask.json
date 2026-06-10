@@ -1,0 +1,7 @@
+{
+  "question": "Why is my app failing?",
+  "namespace": "default",
+  "app": "my-app",
+  "minutes": 30,
+  "max_logs": 100
+}
