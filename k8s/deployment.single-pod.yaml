@@ -1,3 +1,6 @@
+# Template manifest. Every double-brace placeholder must be replaced before applying:
+#   scripts/render-manifest.sh k8s/deployment.single-pod.yaml > k8s/deployment.rendered.yaml
+# Secrets are NOT stored here; create the Secret from k8s/secret.example.yaml first.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -22,13 +25,13 @@ spec:
     spec:
       terminationGracePeriodSeconds: 30
       imagePullSecrets:
-        - name: intelligrepo
+        - name: "{{ IMAGE_PULL_SECRET }}"
       securityContext:
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: ai-log-router
-          image: igs-wms-docker-stable-local.artifactory-na.honeywell.com/ai-log-router:0.1.3
+          image: "{{ IMAGE_REGISTRY }}/ai-log-router:{{ IMAGE_TAG }}"
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
@@ -36,15 +39,17 @@ spec:
               protocol: TCP
           env:
             - name: ELASTICSEARCH_URL
-              value: "https://elasticsearch-client.essential.svc.cluster.local:9201"
+              value: "{{ ELASTICSEARCH_URL }}"
             - name: ELASTICSEARCH_INDEX
-              value: "fluent-bit-*"
+              value: "{{ ELASTICSEARCH_INDEX }}"
             - name: ELASTICSEARCH_TIMESTAMP_FIELD
               value: "@timestamp"
             - name: ELASTICSEARCH_VERIFY_CERTS
-              value: "false"
+              value: "true"
+            # Path to the CA bundle that signed the Elasticsearch certificate.
+            # Mount it (e.g. from a ConfigMap/Secret) or leave empty to use system CAs.
             - name: ELASTICSEARCH_CA_CERT_PATH
-              value: ""
+              value: "{{ ELASTICSEARCH_CA_CERT_PATH }}"
             - name: REQUEST_TIMEOUT_SECONDS
               value: "30"
             - name: MAX_LOGS_LIMIT
@@ -58,25 +63,46 @@ spec:
             - name: AZURE_OPENAI_API_VERSION
               value: "2024-02-01"
             - name: OLLAMA_BASE_URL
-              value: "http://ollama-gemma3-4b.essential.svc.cluster.local:18080"
+              value: "{{ OLLAMA_BASE_URL }}"
             - name: OLLAMA_MODEL
               value: "gemma3:4b"
             - name: OLLAMA_TIMEOUT_SECONDS
               value: "600"
+            # Sensitive values come from the ai-log-router-secret Secret (see k8s/secret.example.yaml).
             - name: ELASTICSEARCH_USERNAME
-              value: "elastic"
+              valueFrom:
+                secretKeyRef:
+                  name: ai-log-router-secret
+                  key: ELASTICSEARCH_USERNAME
+                  optional: true
             - name: ELASTICSEARCH_PASSWORD
-              value: "1ZBcgIwh9yl8BYNkUfFi"
+              valueFrom:
+                secretKeyRef:
+                  name: ai-log-router-secret
+                  key: ELASTICSEARCH_PASSWORD
+                  optional: true
             - name: GEMINI_API_KEY
-              value: ""
+              valueFrom:
+                secretKeyRef:
+                  name: ai-log-router-secret
+                  key: GEMINI_API_KEY
+                  optional: true
             - name: OPENAI_API_KEY
-              value: ""
+              valueFrom:
+                secretKeyRef:
+                  name: ai-log-router-secret
+                  key: OPENAI_API_KEY
+                  optional: true
             - name: AZURE_OPENAI_API_KEY
-              value: ""
+              valueFrom:
+                secretKeyRef:
+                  name: ai-log-router-secret
+                  key: AZURE_OPENAI_API_KEY
+                  optional: true
             - name: AZURE_OPENAI_ENDPOINT
-              value: ""
+              value: "{{ AZURE_OPENAI_ENDPOINT }}"
             - name: AZURE_OPENAI_DEPLOYMENT
-              value: ""
+              value: "{{ AZURE_OPENAI_DEPLOYMENT }}"
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -129,12 +155,13 @@ metadata:
   labels:
     app: ai-log-router
 spec:
-  type: NodePort
+  # ClusterIP only. Use `kubectl port-forward` for access.
+  # Do not switch to NodePort/LoadBalancer: /ask has no authentication yet.
+  type: ClusterIP
   selector:
     app: ai-log-router
   ports:
     - name: http
       port: 8080
       targetPort: http
-      nodePort: 30450
       protocol: TCP

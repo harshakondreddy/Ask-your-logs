@@ -332,17 +332,17 @@ INDEX_HTML = """<!DOCTYPE html>
 
                     <div>
                         <label for="app">Service name (component_name filter)</label>
-                        <input id="app" name="app" placeholder="e.g. uifacade or leave blank for all services">
-                        <div class="hint">Partial names are matched. Leave blank to search all WES services.</div>
+                        <input id="app" name="app" placeholder="e.g. api-gateway or leave blank for all services">
+                        <div class="hint">Partial names are matched. Leave blank to search all services.</div>
                     </div>
 
                     <div class="preset-row">
                         <button type="button" class="preset" data-app="">All services</button>
-                        <button type="button" class="preset" data-app="uifacade">UI Facade</button>
-                        <button type="button" class="preset" data-app="container">Container</button>
-                        <button type="button" class="preset" data-app="order">Order</button>
-                        <button type="button" class="preset secondary" data-app="routing">Routing</button>
-                        <button type="button" class="preset secondary" data-app="businessorchestrator">Business Orchestrator</button>
+                        <button type="button" class="preset" data-app="api-gateway">API Gateway</button>
+                        <button type="button" class="preset" data-app="auth">Auth</button>
+                        <button type="button" class="preset" data-app="orders">Orders</button>
+                        <button type="button" class="preset secondary" data-app="payments">Payments</button>
+                        <button type="button" class="preset secondary" data-app="worker">Worker</button>
                     </div>
 
                     <div class="two-up">

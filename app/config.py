@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     elasticsearch_username: str | None = Field(default=None, alias="ELASTICSEARCH_USERNAME")
     elasticsearch_password: str | None = Field(default=None, alias="ELASTICSEARCH_PASSWORD")
     elasticsearch_index: str = Field(default="logs-*", alias="ELASTICSEARCH_INDEX")
-    elasticsearch_verify_certs: bool = Field(default=False, alias="ELASTICSEARCH_VERIFY_CERTS")
+    elasticsearch_verify_certs: bool = Field(default=True, alias="ELASTICSEARCH_VERIFY_CERTS")
     elasticsearch_ca_cert_path: str | None = Field(default=None, alias="ELASTICSEARCH_CA_CERT_PATH")
     timestamp_field: str = Field(default="@timestamp", alias="ELASTICSEARCH_TIMESTAMP_FIELD")
     # --- LLM provider selection ---

@@ -1,15 +1,18 @@
 # ai-log-router
 
-`ai-log-router` is an R&D-friendly FastAPI service that reads existing Kubernetes and application logs from Elasticsearch, redacts obvious secrets, and asks a configurable LLM provider (Gemini, OpenAI, Azure OpenAI, or Ollama) to summarize likely issues without changing your current EFK stack.
+> **Status: personal R&D / proof of concept — under active development, not production software.**
+> It has not been deployed to production. Use it with synthetic or approved logs only.
+
+`ai-log-router` is a small FastAPI service that reads existing Kubernetes and application logs from Elasticsearch, applies best-effort redaction of secrets and personal data, and asks a configurable LLM provider (Gemini, OpenAI, Azure OpenAI, or Ollama) to summarize likely issues in plain English, without changing an existing EFK stack.
 
 ## What it does
 
-- Keeps your current Fluent Bit -> Elasticsearch -> Kibana pipeline untouched.
-- Adds a small HTTP API for log-question workflows.
+- Leaves the existing Fluent Bit -> Elasticsearch -> Kibana pipeline untouched.
+- Adds a small HTTP API and browser UI for log-question workflows.
 - Pulls a bounded set of recent logs from Elasticsearch.
-- Extracts useful fields instead of sending full raw documents.
-- Redacts common secrets before calling Gemini.
-- Returns a structured analysis response.
+- Extracts a few useful fields instead of sending full raw documents.
+- Redacts common secrets and personal data (best-effort) from every field placed in the prompt.
+- Returns a structured analysis (severity, confidence, status, main issue, impact, next action).
 
 ## Architecture
 
@@ -17,47 +20,28 @@
 Existing:
 Fluent Bit DaemonSet -> Elasticsearch -> Kibana
 
-New:
-User/API -> ai-log-router -> Elasticsearch
-                        -> Google Gemini API
+Added:
+Browser UI / API client -> ai-log-router -> Elasticsearch (read-only query)
+                                         -> LLM provider selected by LLM_PROVIDER:
+                                              gemini | openai | azure_openai | ollama
 ```
 
-If you align this with the EFK setup already present in this workspace, likely values are closer to `https://elasticsearch-client.essential:9201` and `fluent-bit-*`. The shipped manifests stay generic on purpose, so you can retarget them safely.
+Ollama keeps all data inside your own network. The other three providers send the (redacted) prompt to an external API.
 
-## Browser UI
-
-The app now also serves a lightweight browser UI at `/` for interactive log questions.
+## Endpoints
 
 - Browser UI: `GET /`
 - Swagger API docs: `GET /docs`
 - Health: `GET /health`
 - Main API endpoint: `POST /ask`
 
-Use the UI when you want a browser-based workflow. Use `/docs` or `curl` when you want raw API testing.
-
-## API
-
-### Health
-
-`GET /health`
-
-Response:
-
-```json
-{
-  "status": "ok"
-}
-```
-
-### Ask logs
-
-`POST /ask`
+### `POST /ask`
 
 Request body fields:
 
 - `question` required
 - `namespace` optional
-- `app` optional
+- `app` optional (matched against `component_name` / `component_class`)
 - `minutes` optional, default `30`, valid range `1..1440`
 - `max_logs` optional, default `150`, capped by `MAX_LOGS_LIMIT`
 
@@ -70,193 +54,163 @@ Response shape:
   "time_window_minutes": 30,
   "namespace": "default",
   "app": "my-app",
-  "elasticsearch_index": "logs-*"
+  "elasticsearch_index": "logs-*",
+  "llm_provider": "ollama"
 }
 ```
 
-If no logs match, the service returns:
-
-```json
-{
-  "answer": "No matching logs were found for the given filters/time window.",
-  "logs_used": 0,
-  "time_window_minutes": 30,
-  "namespace": "default",
-  "app": "my-app",
-  "elasticsearch_index": "logs-*"
-}
-```
+If no logs match, `answer` is `"No matching logs were found for the given filters/time window."` and `logs_used` is `0`.
 
 ## Prerequisites
 
 - Python 3.11+
-- Reachability to Elasticsearch from where the service runs
-- Read-only Elasticsearch credentials
-- At least one LLM provider path (Gemini/OpenAI/Azure keys or an Ollama endpoint)
+- Network access to Elasticsearch from where the service runs
+- A dedicated, read-only Elasticsearch user (if auth is enabled)
+- One LLM provider: a Gemini/OpenAI/Azure OpenAI key, or an Ollama endpoint
 
 ## Configuration
 
-Environment variables:
+All settings are environment variables (see `app/config.py`).
 
-- `ELASTICSEARCH_URL`
-- `ELASTICSEARCH_USERNAME`
-- `ELASTICSEARCH_PASSWORD`
-- `ELASTICSEARCH_INDEX` default `logs-*`
-- `ELASTICSEARCH_VERIFY_CERTS` default `false`
-- `ELASTICSEARCH_CA_CERT_PATH`
-- `LLM_PROVIDER` default `gemini` (`gemini`, `openai`, `azure_openai`, `ollama`)
-- `GEMINI_API_KEY`
-- `GEMINI_MODEL` default `gemini-flash-latest`
-- `OPENAI_API_KEY`
-- `OPENAI_MODEL` default `gpt-4o-mini`
-- `AZURE_OPENAI_API_KEY`
-- `AZURE_OPENAI_ENDPOINT`
-- `AZURE_OPENAI_DEPLOYMENT`
-- `AZURE_OPENAI_API_VERSION` default `2024-02-01`
-- `OLLAMA_BASE_URL` default `http://127.0.0.1:11434`
-- `OLLAMA_MODEL` default `gemma3:4b`
-- `OLLAMA_TIMEOUT_SECONDS` default `600`
-- `MAX_LOGS_LIMIT` default `330`
-- `REQUEST_TIMEOUT_SECONDS` default `30`
+| Variable | Default | Sensitive |
+|---|---|---|
+| `ELASTICSEARCH_URL` | `http://elasticsearch.logging.svc.cluster.local:9200` | |
+| `ELASTICSEARCH_USERNAME` | — | yes |
+| `ELASTICSEARCH_PASSWORD` | — | yes |
+| `ELASTICSEARCH_INDEX` | `logs-*` | |
+| `ELASTICSEARCH_TIMESTAMP_FIELD` | `@timestamp` | |
+| `ELASTICSEARCH_VERIFY_CERTS` | `true` | |
+| `ELASTICSEARCH_CA_CERT_PATH` | — (system CAs) | |
+| `LLM_PROVIDER` | `gemini` (`gemini`, `openai`, `azure_openai`, `ollama`) | |
+| `GEMINI_API_KEY` | — | yes |
+| `GEMINI_MODEL` | `gemini-flash-latest` | |
+| `OPENAI_API_KEY` | — | yes |
+| `OPENAI_MODEL` | `gpt-4o-mini` | |
+| `AZURE_OPENAI_API_KEY` | — | yes |
+| `AZURE_OPENAI_ENDPOINT` | — | |
+| `AZURE_OPENAI_DEPLOYMENT` | — | |
+| `AZURE_OPENAI_API_VERSION` | `2024-02-01` | |
+| `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | |
+| `OLLAMA_MODEL` | `gemma3:4b` | |
+| `OLLAMA_TIMEOUT_SECONDS` | `600` | |
+| `MAX_LOGS_LIMIT` | `330` | |
+| `REQUEST_TIMEOUT_SECONDS` | `30` | |
 
-Provider behavior:
+TLS: certificate verification is **on** by default. If Elasticsearch uses a private CA, mount that CA bundle and set `ELASTICSEARCH_CA_CERT_PATH`. The certificate must match the hostname in `ELASTICSEARCH_URL`. Set `ELASTICSEARCH_VERIFY_CERTS=false` only for an isolated local test cluster.
 
-- Set `LLM_PROVIDER=gemini` to use Google Gemini.
-- Set `LLM_PROVIDER=openai` to use OpenAI chat completions.
-- Set `LLM_PROVIDER=azure_openai` to use Azure OpenAI chat completions.
-- Set `LLM_PROVIDER=ollama` to use a local or in-cluster Ollama server.
-
-You can switch providers by changing only environment variables. No code changes are required.
+Switching providers needs only environment variable changes, no code changes.
 
 ## Local run
+
+Bind to loopback for local use; `/ask` has no authentication.
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 
-export ELASTICSEARCH_URL="http://elasticsearch.logging.svc.cluster.local:9200"
+export ELASTICSEARCH_URL="https://localhost:9200"
 export ELASTICSEARCH_INDEX="logs-*"
-export LLM_PROVIDER="gemini"
-export GEMINI_API_KEY="replace-me"
-export GEMINI_MODEL="gemini-flash-latest"
-
-uvicorn app.main:app --host 0.0.0.0 --port 8080
-```
-
-OpenAI example:
-
-```bash
-export LLM_PROVIDER="openai"
-export OPENAI_API_KEY="replace-me"
-export OPENAI_MODEL="gpt-4o-mini"
-```
-
-Azure OpenAI example:
-
-```bash
-export LLM_PROVIDER="azure_openai"
-export AZURE_OPENAI_API_KEY="replace-me"
-export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
-export AZURE_OPENAI_DEPLOYMENT="your-deployment-name"
-export AZURE_OPENAI_API_VERSION="2024-02-01"
-```
-
-Ollama example:
-
-```bash
+export ELASTICSEARCH_CA_CERT_PATH="/path/to/ca.crt"
 export LLM_PROVIDER="ollama"
-export OLLAMA_BASE_URL="http://ollama-gemma3-4b.essential.svc.cluster.local:18080"
-export OLLAMA_MODEL="gemma3:4b"
-export OLLAMA_TIMEOUT_SECONDS="600"
+export OLLAMA_BASE_URL="http://127.0.0.1:11434"
+
+uvicorn app.main:app --host 127.0.0.1 --port 8080
 ```
 
-Local test command:
+Other providers:
 
 ```bash
-curl -X POST http://localhost:8080/ask \
+# Gemini
+export LLM_PROVIDER="gemini" GEMINI_API_KEY="{{ GEMINI_API_KEY }}"
+# OpenAI
+export LLM_PROVIDER="openai" OPENAI_API_KEY="{{ OPENAI_API_KEY }}"
+# Azure OpenAI
+export LLM_PROVIDER="azure_openai" AZURE_OPENAI_API_KEY="{{ AZURE_OPENAI_API_KEY }}" \
+       AZURE_OPENAI_ENDPOINT="https://<resource>.openai.azure.com/" AZURE_OPENAI_DEPLOYMENT="<deployment>"
+```
+
+Test request:
+
+```bash
+curl -X POST http://127.0.0.1:8080/ask \
   -H "Content-Type: application/json" \
-  -d '{
-    "question": "Why is my app failing?",
-    "namespace": "default",
-    "app": "my-app",
-    "minutes": 30,
-    "max_logs": 100
-  }'
+  -d @sample-requests/ask.json
 ```
 
-## Docker build and push
+## Tests
 
 ```bash
-docker build -t your-registry/ai-log-router:0.1.0 .
-docker push your-registry/ai-log-router:0.1.0
+pytest -q
 ```
 
-## Kubernetes deployment (portable across environments)
+Tests cover redaction (plain `key=value`, quoted JSON keys, nested JSON, auth headers, URL credentials, JWTs, emails, IPs, private keys), prompt construction, and the TLS default. All test data is synthetic.
+
+## Docker build
 
 ```bash
+docker build -t <registry>/ai-log-router:<tag> .
+docker push <registry>/ai-log-router:<tag>
+```
+
+## Kubernetes deployment
+
+Manifests in `k8s/` are templates. Values in double braces, such as `{{ ELASTICSEARCH_PASSWORD }}`, are placeholders. `scripts/render-manifest.sh` replaces each with the environment variable of the same name and fails if any is unset. Rendered output (`k8s/*.rendered.yaml`, `k8s/secret.yaml`) is git-ignored. Never commit it.
+
+| File | Purpose |
+|---|---|
+| `k8s/namespace.yaml` | Optional namespace |
+| `k8s/secret.example.yaml` | Template for `ai-log-router-secret` (Elasticsearch credentials, LLM keys) |
+| `k8s/deployment.single-pod.yaml` | Deployment + ClusterIP Service, inline non-secret config, secrets via `secretKeyRef` |
+| `k8s/configmap.yaml` + `k8s/deployment.yaml` + `k8s/service.yaml` | Alternative layout using `envFrom` ConfigMap + Secret |
+| `k8s/networkpolicy.yaml` | Example ingress/egress restriction |
+
+```bash
+NS=ai-log-router
 kubectl apply -f k8s/namespace.yaml
-kubectl -n ai-log-router apply -f k8s/configmap.yaml
-kubectl -n ai-log-router apply -f k8s/deployment.single-pod.yaml
+
+# 1. Secret (credentials never go in the Deployment or ConfigMap)
+export ELASTICSEARCH_USERNAME=... ELASTICSEARCH_PASSWORD=... \
+       GEMINI_API_KEY= OPENAI_API_KEY= AZURE_OPENAI_API_KEY=
+scripts/render-manifest.sh k8s/secret.example.yaml | kubectl -n "$NS" apply -f -
+
+# 2. Workload
+export IMAGE_REGISTRY=<registry> IMAGE_TAG=<tag> IMAGE_PULL_SECRET=<pull-secret-name> \
+       ELASTICSEARCH_URL=https://<es-host>:9200 ELASTICSEARCH_INDEX='logs-*' \
+       ELASTICSEARCH_CA_CERT_PATH= OLLAMA_BASE_URL=http://<ollama-host>:11434 \
+       AZURE_OPENAI_ENDPOINT= AZURE_OPENAI_DEPLOYMENT=
+scripts/render-manifest.sh k8s/deployment.single-pod.yaml | kubectl -n "$NS" apply -f -
+
+# 3. Optional network policy (same namespace as the workload)
+kubectl -n "$NS" apply -f k8s/networkpolicy.yaml
+
+# 4. Access (Service is ClusterIP)
+kubectl -n "$NS" port-forward svc/ai-log-router 8080:8080
 ```
 
-Why this is portable:
-
-- `k8s/deployment.single-pod.yaml` has no hardcoded namespace, so you can deploy it to any namespace with `-n`.
-- All provider and Elasticsearch runtime values are injected through `k8s/configmap.yaml`.
-- Elasticsearch username/password are optional. Leave empty when the target cluster has auth disabled.
-- You can migrate sensitive keys to a Secret later without changing app code.
-
-Per-environment checklist:
-
-- Set `ELASTICSEARCH_URL`, `ELASTICSEARCH_INDEX`, TLS options in `k8s/configmap.yaml`.
-- Set `LLM_PROVIDER` and model fields in `k8s/configmap.yaml`.
-- Set only required provider key fields in `k8s/configmap.yaml`.
-- Set `ELASTICSEARCH_USERNAME` and `ELASTICSEARCH_PASSWORD` only if the target Elasticsearch requires auth.
-
-Optional restrictive network policy:
-
-```bash
-kubectl apply -f k8s/networkpolicy.yaml
-```
-
-Port-forward for testing:
-
-```bash
-kubectl -n ai-log-router port-forward svc/ai-log-router 8080:8080
-```
+Pass the values through your shell, a CI secret store, or an external secrets operator. Don't write them into tracked files.
 
 ## Elasticsearch query behavior
 
-- Filters by time window using `@timestamp` by default.
-- Applies namespace filters when provided.
-- Applies app filters against common Fluent Bit and Kubernetes fields.
-- Searches common log fields including `message`, `log`, `msg`, and `component_message`.
-- Boosts error-like terms and the user question.
-- Sorts newest logs first.
-- Handles missing fields by using candidate field lists.
+- Filters by time window using `ELASTICSEARCH_TIMESTAMP_FIELD` (default `@timestamp`).
+- Applies the `app` filter against `component_name` / `component_class`.
+- Searches `component_message`, `message`, `log`, `msg`.
+- Boosts ERROR/WARN levels, error-like terms and the question text.
+- Sorts by relevance, then newest first.
 
-## Security notes
+## Security notes and limitations
 
-- Do not hardcode secrets.
-- Replace placeholders in `k8s/secret.yaml` before deploying.
-- Use read-only Elasticsearch credentials.
-- Logs may contain sensitive data even after regex redaction.
-- External LLM usage for production logs should be approved by your security and compliance owners.
-- Add authentication and authorization before using this beyond an internal POC.
-- The default service type is `ClusterIP`.
+- **No authentication on `/ask`.** Keep the Service as ClusterIP and use port-forward, or bind to `127.0.0.1` locally. Don't expose it through a NodePort, LoadBalancer, Ingress or reverse proxy until authentication and per-caller scoping are added. Any caller can query logs with the server's Elasticsearch credentials.
+- **Redaction is best-effort.** It uses key-name and regex matching, plus recursive redaction for JSON messages. It will miss formats it hasn't seen. Don't treat it as making real production data safe.
+- External LLM providers (Gemini, OpenAI, Azure OpenAI) receive the redacted prompt. Get approval from your security and compliance owners before using real logs. Prefer Ollama for anything sensitive.
+- Use a dedicated Elasticsearch user with read-only access to the log indices only.
+- Keep TLS verification on.
+- Results depend on the shape of logs indexed by Fluent Bit. Capped context can omit relevant evidence.
 
-## Known limitations
+## Roadmap
 
-- Regex redaction is best-effort only.
-- The service depends on the shape of logs already indexed by Fluent Bit.
-- Very large or noisy result sets may still omit relevant evidence because context is intentionally capped.
-- Provider-specific quotas and model limits may affect reliability.
-
-## Next enhancements
-
-- Add authentication and audit logging.
-- Add query templates for common Kubernetes failure modes.
-- Add streaming responses or async job handling for large searches.
-- Add Elasticsearch field discovery and index pattern auto-detection.
-- Add unit tests and optional mock mode for local development.
+- Authentication and audit logging on `/ask`
+- Server-side index/namespace scoping per caller
+- Query templates for common Kubernetes failure modes
+- Async job handling for large searches
+- Elasticsearch field discovery

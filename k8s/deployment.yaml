@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ai-log-router
-  namespace: ai-log-router
 spec:
   replicas: 1
   selector:
@@ -15,7 +14,7 @@ spec:
     spec:
       containers:
         - name: ai-log-router
-          image: your-registry/ai-log-router:0.1.0
+          image: "{{ IMAGE_REGISTRY }}/ai-log-router:{{ IMAGE_TAG }}"
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
