@@ -1,6 +1,8 @@
 import logging
+import secrets
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse
 
 from app.config import get_settings
@@ -17,7 +19,14 @@ logging.basicConfig(
 )
 LOGGER = logging.getLogger(__name__)
 
-app = FastAPI(title="ai-log-router", version="0.1.0")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    if not get_settings().api_key:
+        LOGGER.warning("API_KEY is not set: /ask is unauthenticated. Use loopback or port-forward only.")
+    yield
+
+
+app = FastAPI(title="ai-log-router", version="0.1.0", lifespan=lifespan)
 
 
 def sanitize_answer_for_end_users(answer: str) -> str:
@@ -319,6 +328,11 @@ INDEX_HTML = """<!DOCTYPE html>
                 <h2 class="section-title">Ask Logs</h2>
                 <form id="ask-form" class="field-grid">
                     <div>
+                        <label for="api_key">API key</label>
+                        <input id="api_key" name="api_key" type="password" autocomplete="off" placeholder="Required when the server sets API_KEY">
+                    </div>
+
+                    <div>
                         <label for="question">Question</label>
                         <textarea id="question" name="question" placeholder="What is the current status of my application?" required></textarea>
                     </div>
@@ -405,6 +419,7 @@ INDEX_HTML = """<!DOCTYPE html>
         const form = document.getElementById("ask-form");
         const questionInput = document.getElementById("question");
         const appInput = document.getElementById("app");
+        const apiKeyInput = document.getElementById("api_key");
         const minutesInput = document.getElementById("minutes");
         const maxLogsInput = document.getElementById("max_logs");
         const statusNode = document.getElementById("status");
@@ -472,7 +487,7 @@ INDEX_HTML = """<!DOCTYPE html>
             const confidenceMatch = rawText.match(/Confidence:\\s*([^\\n]+)/i);
 
             const normalizedText = rawText
-                .replace(/```[\s\S]*?```/g, "")
+                .replace(/```[\\s\\S]*?```/g, "")
                 .replace(/Severity:\\s*[^\\n]+/gi, "")
                 .replace(/Confidence:\\s*[^\\n]+/gi, "")
                 .replace(/\\r/g, "")
@@ -535,7 +550,10 @@ INDEX_HTML = """<!DOCTYPE html>
             try {
                 const response = await fetch("/ask", {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: Object.assign(
+                        { "Content-Type": "application/json" },
+                        apiKeyInput.value ? { "X-API-Key": apiKeyInput.value } : {}
+                    ),
                     body: JSON.stringify(payload),
                     signal: controller.signal,
                 });
@@ -621,7 +639,20 @@ def health() -> HealthResponse:
     return HealthResponse()
 
 
-@app.post("/ask", response_model=AskResponse)
+def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
+    """Require X-API-Key on /ask when API_KEY is configured.
+
+    If API_KEY is unset the endpoint stays open, which is only acceptable for
+    loopback/port-forward use. A warning is logged at startup in that case.
+    """
+    expected = get_settings().api_key
+    if not expected:
+        return
+    if not x_api_key or not secrets.compare_digest(x_api_key.encode(), expected.encode()):
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+
+@app.post("/ask", response_model=AskResponse, dependencies=[Depends(require_api_key)])
 def ask_logs(request: AskRequest) -> AskResponse:
     settings = get_settings()
     effective_max_logs = min(request.max_logs, settings.max_logs_limit)

@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     ollama_model: str = Field(default="gemma3:4b", alias="OLLAMA_MODEL")
     ollama_timeout_seconds: int = Field(default=600, alias="OLLAMA_TIMEOUT_SECONDS")
 
+    # Shared key required in the X-API-Key header on /ask. Unset = no auth (local use only).
+    api_key: str | None = Field(default=None, alias="API_KEY")
+
     max_logs_limit: int = Field(default=330, alias="MAX_LOGS_LIMIT")
     request_timeout_seconds: int = Field(default=30, alias="REQUEST_TIMEOUT_SECONDS")
 

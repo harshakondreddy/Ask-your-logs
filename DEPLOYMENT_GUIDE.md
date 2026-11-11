@@ -51,6 +51,7 @@ OPENAI_API_KEY=
 AZURE_OPENAI_API_KEY=
 AZURE_OPENAI_ENDPOINT=
 AZURE_OPENAI_DEPLOYMENT=
+API_KEY={{ API_KEY }}
 MAX_LOGS_LIMIT=330
 REQUEST_TIMEOUT_SECONDS=30
 EOF
@@ -73,6 +74,7 @@ pytest -q
 curl http://127.0.0.1:8080/health
 curl -X POST http://127.0.0.1:8080/ask \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
   -d '{"question": "Show errors from last 30 minutes", "app": "my-app", "minutes": 30, "max_logs": 100}'
 ```
 
@@ -134,7 +136,7 @@ The `Dockerfile` is a multi-stage build on `python:3.11-slim`. It runs as non-ro
 `k8s/deployment.single-pod.yaml` contains:
 - **Deployment:** 1 replica, resource limits, restricted security context (non-root, read-only root FS, no privilege escalation, all capabilities dropped), startup/readiness/liveness probes.
 - **Service:** `ClusterIP` on port 8080.
-- Credentials and API keys are read from Secret `ai-log-router-secret` through `secretKeyRef`. They are never inlined.
+- Credentials and API keys are read from Secret `ai-log-router-secret` through `secretKeyRef`. They are never inlined. `API_KEY` is required, so the pod won't start without it.
 
 ### Steps
 
@@ -149,6 +151,7 @@ kubectl -n "$NS" create secret docker-registry "{{ IMAGE_PULL_SECRET }}" \
 unset REGISTRY_PASSWORD
 
 # Application secret
+export API_KEY="$(openssl rand -hex 32)"   # share with callers; they send it as X-API-Key
 export ELASTICSEARCH_USERNAME=... ELASTICSEARCH_PASSWORD=... GEMINI_API_KEY= OPENAI_API_KEY= AZURE_OPENAI_API_KEY=
 scripts/render-manifest.sh k8s/secret.example.yaml | kubectl -n "$NS" apply -f -
 
@@ -186,6 +189,7 @@ kubectl -n "$NS" rollout undo deployment/ai-log-router
 | Symptom | Check |
 |---|---|
 | Pod `Pending` / `ImagePullBackOff` | `kubectl describe pod`: pull secret name, registry reachability, resources |
+| `/ask` returns 401 | `X-API-Key` header, or the UI API key field, matches the `API_KEY` in the Secret |
 | `CrashLoopBackOff` | `kubectl logs`: config values, Secret exists, provider key set |
 | `/ask` returns 502 with a TLS error | CA bundle mounted, `ELASTICSEARCH_CA_CERT_PATH` set, cert hostname matches `ELASTICSEARCH_URL` |
 | `/ask` returns 502 from the LLM | provider key, model name, Ollama reachability / NetworkPolicy egress port |
@@ -195,9 +199,8 @@ kubectl -n "$NS" rollout undo deployment/ai-log-router
 
 ## Exposing Beyond the Cluster
 
-**Not supported yet.** `/ask` has no authentication or per-caller scoping. Any caller who can reach it can query logs using the server's Elasticsearch credentials and send them to the configured LLM provider. Until authentication is added:
+`/ask` is protected only by one shared API key. There are no per-user identities or scoping. Every key holder can query any log the server's Elasticsearch user can read.
 
-- Keep the Service as `ClusterIP`. Don't use NodePort, LoadBalancer, Ingress or a host-level reverse proxy.
-- Use `kubectl port-forward` for personal access.
-
-Once authentication exists, put it behind an authenticating ingress or reverse proxy with TLS. Restrict source networks and document the configuration with placeholders, never real hostnames or IPs.
+- Prefer `kubectl port-forward`, and keep the Service as `ClusterIP`.
+- If you must expose it, use an Ingress or reverse proxy with **TLS** (the key is a bearer secret), restrict source networks, and rotate `API_KEY` by updating the Secret and restarting the pod.
+- Document any proxy configuration with placeholders. Never use real hostnames or IPs.
