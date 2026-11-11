@@ -4,11 +4,11 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: ai-log-router
+  name: ask-your-logs
 spec:
   podSelector:
     matchLabels:
-      app: ai-log-router
+      app: ask-your-logs
   policyTypes:
     - Ingress
     - Egress

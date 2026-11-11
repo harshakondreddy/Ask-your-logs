@@ -26,7 +26,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="ai-log-router", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="ask-your-logs", version="0.1.0", lifespan=lifespan)
 
 
 def sanitize_answer_for_end_users(answer: str) -> str:
@@ -43,7 +43,7 @@ INDEX_HTML = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ai-log-router</title>
+    <title>ask-your-logs</title>
     <style>
         :root {
             color-scheme: light;

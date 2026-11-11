@@ -1,4 +1,4 @@
-# AI Log Router - Deployment Guide
+# Ask Your Logs - Deployment Guide
 
 > Personal R&D / proof of concept. Not production software. See the security notes in `README.md` before running it against real logs.
 
@@ -23,7 +23,7 @@ Placeholders in double braces, such as `{{ ELASTICSEARCH_PASSWORD }}`, mark valu
 ### Environment Setup
 
 ```bash
-cd ai-log-router
+cd ask-your-logs
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
@@ -85,7 +85,7 @@ curl -X POST http://127.0.0.1:8080/ask \
 ### Project Structure
 
 ```
-ai-log-router/
+ask-your-logs/
 ├── app/
 │   ├── main.py                  # FastAPI app, browser UI, endpoints
 │   ├── config.py                # Environment configuration (Settings)
@@ -121,10 +121,10 @@ ai-log-router/
 ## Docker Build and Push
 
 ```bash
-docker build -t ai-log-router:<tag> .
-docker tag ai-log-router:<tag> <registry>/ai-log-router:<tag>
+docker build -t ask-your-logs:<tag> .
+docker tag ask-your-logs:<tag> <registry>/ask-your-logs:<tag>
 docker login <registry>          # prompts for credentials; don't put them on the command line
-docker push <registry>/ai-log-router:<tag>
+docker push <registry>/ask-your-logs:<tag>
 ```
 
 The `Dockerfile` is a multi-stage build on `python:3.11-slim`. It runs as non-root user `appuser` (uid 10001), installs from pre-built wheels, exposes port 8080, and has a `/health` healthcheck.
@@ -136,7 +136,7 @@ The `Dockerfile` is a multi-stage build on `python:3.11-slim`. It runs as non-ro
 `k8s/deployment.single-pod.yaml` contains:
 - **Deployment:** 1 replica, resource limits, restricted security context (non-root, read-only root FS, no privilege escalation, all capabilities dropped), startup/readiness/liveness probes.
 - **Service:** `ClusterIP` on port 8080.
-- Credentials and API keys are read from Secret `ai-log-router-secret` through `secretKeyRef`. They are never inlined. `API_KEY` is required, so the pod won't start without it.
+- Credentials and API keys are read from Secret `ask-your-logs-secret` through `secretKeyRef`. They are never inlined. `API_KEY` is required, so the pod won't start without it.
 
 ### Steps
 
@@ -170,18 +170,18 @@ To use a private CA for Elasticsearch, mount the CA bundle into the pod, for exa
 ### Verify
 
 ```bash
-kubectl -n "$NS" get deploy,pods,svc -l app=ai-log-router
-kubectl -n "$NS" logs -l app=ai-log-router --tail=50
-kubectl -n "$NS" port-forward svc/ai-log-router 8080:8080
+kubectl -n "$NS" get deploy,pods,svc -l app=ask-your-logs
+kubectl -n "$NS" logs -l app=ask-your-logs --tail=50
+kubectl -n "$NS" port-forward svc/ask-your-logs 8080:8080
 curl http://127.0.0.1:8080/health
 ```
 
 ### Updates and Rollback
 
 ```bash
-kubectl -n "$NS" set image deployment/ai-log-router ai-log-router=<registry>/ai-log-router:<new-tag>
-kubectl -n "$NS" rollout status deployment/ai-log-router
-kubectl -n "$NS" rollout undo deployment/ai-log-router
+kubectl -n "$NS" set image deployment/ask-your-logs ask-your-logs=<registry>/ask-your-logs:<new-tag>
+kubectl -n "$NS" rollout status deployment/ask-your-logs
+kubectl -n "$NS" rollout undo deployment/ask-your-logs
 ```
 
 ### Troubleshooting
