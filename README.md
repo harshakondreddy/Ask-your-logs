@@ -37,6 +37,8 @@ Ollama keeps all data inside your own network. The other three providers send th
 
 ### `POST /ask`
 
+When `API_KEY` is set, every request must send it in the `X-API-Key` header. Otherwise the server returns `401`. The browser UI has an API key field for this. `/health` never needs a key.
+
 Request body fields:
 
 - `question` required
@@ -93,6 +95,7 @@ All settings are environment variables (see `app/config.py`).
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | |
 | `OLLAMA_MODEL` | `gemma3:4b` | |
 | `OLLAMA_TIMEOUT_SECONDS` | `600` | |
+| `API_KEY` | — (auth off) | yes |
 | `MAX_LOGS_LIMIT` | `330` | |
 | `REQUEST_TIMEOUT_SECONDS` | `30` | |
 
@@ -102,7 +105,7 @@ Switching providers needs only environment variable changes, no code changes.
 
 ## Local run
 
-Bind to loopback for local use; `/ask` has no authentication.
+Bind to loopback for local use. Set `API_KEY` if anyone else can reach the port.
 
 ```bash
 python3 -m venv .venv
@@ -135,6 +138,7 @@ Test request:
 ```bash
 curl -X POST http://127.0.0.1:8080/ask \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
   -d @sample-requests/ask.json
 ```
 
@@ -144,7 +148,7 @@ curl -X POST http://127.0.0.1:8080/ask \
 pytest -q
 ```
 
-Tests cover redaction (plain `key=value`, quoted JSON keys, nested JSON, auth headers, URL credentials, JWTs, emails, IPs, private keys), prompt construction, and the TLS default. All test data is synthetic.
+Tests cover redaction (plain `key=value`, quoted JSON keys, nested JSON, auth headers, URL credentials, JWTs, emails, IPs, private keys), prompt construction, API-key auth, and the TLS default. All test data is synthetic.
 
 ## Docker build
 
@@ -170,7 +174,8 @@ NS=ai-log-router
 kubectl apply -f k8s/namespace.yaml
 
 # 1. Secret (credentials never go in the Deployment or ConfigMap)
-export ELASTICSEARCH_USERNAME=... ELASTICSEARCH_PASSWORD=... \
+export API_KEY="$(openssl rand -hex 32)" \
+       ELASTICSEARCH_USERNAME=... ELASTICSEARCH_PASSWORD=... \
        GEMINI_API_KEY= OPENAI_API_KEY= AZURE_OPENAI_API_KEY=
 scripts/render-manifest.sh k8s/secret.example.yaml | kubectl -n "$NS" apply -f -
 
@@ -200,7 +205,7 @@ Pass the values through your shell, a CI secret store, or an external secrets op
 
 ## Security notes and limitations
 
-- **No authentication on `/ask`.** Keep the Service as ClusterIP and use port-forward, or bind to `127.0.0.1` locally. Don't expose it through a NodePort, LoadBalancer, Ingress or reverse proxy until authentication and per-caller scoping are added. Any caller can query logs with the server's Elasticsearch credentials.
+- **Authentication is a single shared API key** (`API_KEY`, sent as `X-API-Key`). The Kubernetes manifest requires it. Leaving it unset locally disables auth, and the server logs a warning. There are no per-user identities, scopes or audit trail yet. Every key holder can query any log the server's Elasticsearch user can read. Keep the Service as ClusterIP. If you put it behind an ingress, use TLS so the key isn't sent in clear text.
 - **Redaction is best-effort.** It uses key-name and regex matching, plus recursive redaction for JSON messages. It will miss formats it hasn't seen. Don't treat it as making real production data safe.
 - External LLM providers (Gemini, OpenAI, Azure OpenAI) receive the redacted prompt. Get approval from your security and compliance owners before using real logs. Prefer Ollama for anything sensitive.
 - Use a dedicated Elasticsearch user with read-only access to the log indices only.
@@ -209,7 +214,7 @@ Pass the values through your shell, a CI secret store, or an external secrets op
 
 ## Roadmap
 
-- Authentication and audit logging on `/ask`
+- Per-user authentication (OIDC) and audit logging on `/ask`
 - Server-side index/namespace scoping per caller
 - Query templates for common Kubernetes failure modes
 - Async job handling for large searches
