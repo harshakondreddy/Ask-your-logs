@@ -1,11 +1,11 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: ai-log-router
+  name: ask-your-logs
 spec:
   type: ClusterIP
   selector:
-    app: ai-log-router
+    app: ask-your-logs
   ports:
     - name: http
       port: 8080

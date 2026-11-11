@@ -4,15 +4,15 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ai-log-router
+  name: ask-your-logs
   labels:
-    app: ai-log-router
+    app: ask-your-logs
 spec:
   replicas: 1
   revisionHistoryLimit: 3
   selector:
     matchLabels:
-      app: ai-log-router
+      app: ask-your-logs
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -21,7 +21,7 @@ spec:
   template:
     metadata:
       labels:
-        app: ai-log-router
+        app: ask-your-logs
     spec:
       terminationGracePeriodSeconds: 30
       imagePullSecrets:
@@ -30,8 +30,8 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: ai-log-router
-          image: "{{ IMAGE_REGISTRY }}/ai-log-router:{{ IMAGE_TAG }}"
+        - name: ask-your-logs
+          image: "{{ IMAGE_REGISTRY }}/ask-your-logs:{{ IMAGE_TAG }}"
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
@@ -68,41 +68,41 @@ spec:
               value: "gemma3:4b"
             - name: OLLAMA_TIMEOUT_SECONDS
               value: "600"
-            # Sensitive values come from the ai-log-router-secret Secret (see k8s/secret.example.yaml).
+            # Sensitive values come from the ask-your-logs-secret Secret (see k8s/secret.example.yaml).
             - name: ELASTICSEARCH_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: ai-log-router-secret
+                  name: ask-your-logs-secret
                   key: ELASTICSEARCH_USERNAME
                   optional: true
             - name: ELASTICSEARCH_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: ai-log-router-secret
+                  name: ask-your-logs-secret
                   key: ELASTICSEARCH_PASSWORD
                   optional: true
             - name: GEMINI_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: ai-log-router-secret
+                  name: ask-your-logs-secret
                   key: GEMINI_API_KEY
                   optional: true
             - name: OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: ai-log-router-secret
+                  name: ask-your-logs-secret
                   key: OPENAI_API_KEY
                   optional: true
             - name: AZURE_OPENAI_API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: ai-log-router-secret
+                  name: ask-your-logs-secret
                   key: AZURE_OPENAI_API_KEY
                   optional: true
             - name: API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: ai-log-router-secret
+                  name: ask-your-logs-secret
                   key: API_KEY
                   optional: false
             - name: AZURE_OPENAI_ENDPOINT
@@ -157,15 +157,15 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: ai-log-router
+  name: ask-your-logs
   labels:
-    app: ai-log-router
+    app: ask-your-logs
 spec:
   # ClusterIP only. Use `kubectl port-forward` for access.
   # Do not switch to NodePort/LoadBalancer: /ask has no authentication yet.
   type: ClusterIP
   selector:
-    app: ai-log-router
+    app: ask-your-logs
   ports:
     - name: http
       port: 8080

@@ -1,29 +1,29 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ai-log-router
+  name: ask-your-logs
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: ai-log-router
+      app: ask-your-logs
   template:
     metadata:
       labels:
-        app: ai-log-router
+        app: ask-your-logs
     spec:
       containers:
-        - name: ai-log-router
-          image: "{{ IMAGE_REGISTRY }}/ai-log-router:{{ IMAGE_TAG }}"
+        - name: ask-your-logs
+          image: "{{ IMAGE_REGISTRY }}/ask-your-logs:{{ IMAGE_TAG }}"
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
               name: http
           envFrom:
             - configMapRef:
-                name: ai-log-router-config
+                name: ask-your-logs-config
             - secretRef:
-                name: ai-log-router-secret
+                name: ask-your-logs-secret
           resources:
             requests:
               cpu: 100m

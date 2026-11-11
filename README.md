@@ -1,9 +1,9 @@
-# ai-log-router
+# ask-your-logs
 
 > **Status: personal R&D / proof of concept — under active development, not production software.**
 > It has not been deployed to production. Use it with synthetic or approved logs only.
 
-`ai-log-router` is a small FastAPI service that reads existing Kubernetes and application logs from Elasticsearch, applies best-effort redaction of secrets and personal data, and asks a configurable LLM provider (Gemini, OpenAI, Azure OpenAI, or Ollama) to summarize likely issues in plain English, without changing an existing EFK stack.
+`ask-your-logs` is a small FastAPI service that reads existing Kubernetes and application logs from Elasticsearch, applies best-effort redaction of secrets and personal data, and asks a configurable LLM provider (Gemini, OpenAI, Azure OpenAI, or Ollama) to summarize likely issues in plain English, without changing an existing EFK stack.
 
 ## What it does
 
@@ -21,7 +21,7 @@ Existing:
 Fluent Bit DaemonSet -> Elasticsearch -> Kibana
 
 Added:
-Browser UI / API client -> ai-log-router -> Elasticsearch (read-only query)
+Browser UI / API client -> ask-your-logs -> Elasticsearch (read-only query)
                                          -> LLM provider selected by LLM_PROVIDER:
                                               gemini | openai | azure_openai | ollama
 ```
@@ -153,8 +153,8 @@ Tests cover redaction (plain `key=value`, quoted JSON keys, nested JSON, auth he
 ## Docker build
 
 ```bash
-docker build -t <registry>/ai-log-router:<tag> .
-docker push <registry>/ai-log-router:<tag>
+docker build -t <registry>/ask-your-logs:<tag> .
+docker push <registry>/ask-your-logs:<tag>
 ```
 
 ## Kubernetes deployment
@@ -164,13 +164,13 @@ Manifests in `k8s/` are templates. Values in double braces, such as `{{ ELASTICS
 | File | Purpose |
 |---|---|
 | `k8s/namespace.yaml` | Optional namespace |
-| `k8s/secret.example.yaml` | Template for `ai-log-router-secret` (Elasticsearch credentials, LLM keys) |
+| `k8s/secret.example.yaml` | Template for `ask-your-logs-secret` (Elasticsearch credentials, LLM keys) |
 | `k8s/deployment.single-pod.yaml` | Deployment + ClusterIP Service, inline non-secret config, secrets via `secretKeyRef` |
 | `k8s/configmap.yaml` + `k8s/deployment.yaml` + `k8s/service.yaml` | Alternative layout using `envFrom` ConfigMap + Secret |
 | `k8s/networkpolicy.yaml` | Example ingress/egress restriction |
 
 ```bash
-NS=ai-log-router
+NS=ask-your-logs
 kubectl apply -f k8s/namespace.yaml
 
 # 1. Secret (credentials never go in the Deployment or ConfigMap)
@@ -190,7 +190,7 @@ scripts/render-manifest.sh k8s/deployment.single-pod.yaml | kubectl -n "$NS" app
 kubectl -n "$NS" apply -f k8s/networkpolicy.yaml
 
 # 4. Access (Service is ClusterIP)
-kubectl -n "$NS" port-forward svc/ai-log-router 8080:8080
+kubectl -n "$NS" port-forward svc/ask-your-logs 8080:8080
 ```
 
 Pass the values through your shell, a CI secret store, or an external secrets operator. Don't write them into tracked files.

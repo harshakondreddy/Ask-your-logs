@@ -1,1 +1,1 @@
-"""ai-log-router package."""
+"""ask-your-logs package."""
