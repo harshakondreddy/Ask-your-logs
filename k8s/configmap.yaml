@@ -1,0 +1,29 @@
+# Non-sensitive settings only. Credentials and API keys belong in the Secret
+# (k8s/secret.example.yaml), never here.
+# Replace every double-brace placeholder before applying (see scripts/render-manifest.sh).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-log-router-config
+data:
+  ELASTICSEARCH_URL: "{{ ELASTICSEARCH_URL }}"
+  ELASTICSEARCH_INDEX: "{{ ELASTICSEARCH_INDEX }}"
+  ELASTICSEARCH_TIMESTAMP_FIELD: "@timestamp"
+  # Keep TLS verification on. Point ELASTICSEARCH_CA_CERT_PATH at a mounted CA
+  # bundle if Elasticsearch uses a private CA; leave empty to use system CAs.
+  ELASTICSEARCH_VERIFY_CERTS: "true"
+  ELASTICSEARCH_CA_CERT_PATH: "{{ ELASTICSEARCH_CA_CERT_PATH }}"
+
+  # LLM provider: gemini | openai | azure_openai | ollama
+  LLM_PROVIDER: "{{ LLM_PROVIDER }}"
+  GEMINI_MODEL: gemini-flash-latest
+  OPENAI_MODEL: gpt-4o-mini
+  AZURE_OPENAI_ENDPOINT: "{{ AZURE_OPENAI_ENDPOINT }}"
+  AZURE_OPENAI_DEPLOYMENT: "{{ AZURE_OPENAI_DEPLOYMENT }}"
+  AZURE_OPENAI_API_VERSION: "2024-02-01"
+  OLLAMA_BASE_URL: "{{ OLLAMA_BASE_URL }}"
+  OLLAMA_MODEL: gemma3:4b
+  OLLAMA_TIMEOUT_SECONDS: "600"
+
+  MAX_LOGS_LIMIT: "330"
+  REQUEST_TIMEOUT_SECONDS: "30"

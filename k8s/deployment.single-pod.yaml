@@ -1,0 +1,167 @@
+# Template manifest. Every double-brace placeholder must be replaced before applying:
+#   scripts/render-manifest.sh k8s/deployment.single-pod.yaml > k8s/deployment.rendered.yaml
+# Secrets are NOT stored here; create the Secret from k8s/secret.example.yaml first.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-log-router
+  labels:
+    app: ai-log-router
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: ai-log-router
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: ai-log-router
+    spec:
+      terminationGracePeriodSeconds: 30
+      imagePullSecrets:
+        - name: "{{ IMAGE_PULL_SECRET }}"
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ai-log-router
+          image: "{{ IMAGE_REGISTRY }}/ai-log-router:{{ IMAGE_TAG }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          env:
+            - name: ELASTICSEARCH_URL
+              value: "{{ ELASTICSEARCH_URL }}"
+            - name: ELASTICSEARCH_INDEX
+              value: "{{ ELASTICSEARCH_INDEX }}"
+            - name: ELASTICSEARCH_TIMESTAMP_FIELD
+              value: "@timestamp"
+            - name: ELASTICSEARCH_VERIFY_CERTS
+              value: "true"
+            # Path to the CA bundle that signed the Elasticsearch certificate.
+            # Mount it (e.g. from a ConfigMap/Secret) or leave empty to use system CAs.
+            - name: ELASTICSEARCH_CA_CERT_PATH
+              value: "{{ ELASTICSEARCH_CA_CERT_PATH }}"
+            - name: REQUEST_TIMEOUT_SECONDS
+              value: "30"
+            - name: MAX_LOGS_LIMIT
+              value: "10"
+            - name: LLM_PROVIDER
+              value: "ollama"
+            - name: GEMINI_MODEL
+              value: "gemini-flash-latest"
+            - name: OPENAI_MODEL
+              value: "gpt-4o-mini"
+            - name: AZURE_OPENAI_API_VERSION
+              value: "2024-02-01"
+            - name: OLLAMA_BASE_URL
+              value: "{{ OLLAMA_BASE_URL }}"
+            - name: OLLAMA_MODEL
+              value: "gemma3:4b"
+            - name: OLLAMA_TIMEOUT_SECONDS
+              value: "600"
+            # Sensitive values come from the ai-log-router-secret Secret (see k8s/secret.example.yaml).
+            - name: ELASTICSEARCH_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: ai-log-router-secret
+                  key: ELASTICSEARCH_USERNAME
+                  optional: true
+            - name: ELASTICSEARCH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: ai-log-router-secret
+                  key: ELASTICSEARCH_PASSWORD
+                  optional: true
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ai-log-router-secret
+                  key: GEMINI_API_KEY
+                  optional: true
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ai-log-router-secret
+                  key: OPENAI_API_KEY
+                  optional: true
+            - name: AZURE_OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ai-log-router-secret
+                  key: AZURE_OPENAI_API_KEY
+                  optional: true
+            - name: AZURE_OPENAI_ENDPOINT
+              value: "{{ AZURE_OPENAI_ENDPOINT }}"
+            - name: AZURE_OPENAI_DEPLOYMENT
+              value: "{{ AZURE_OPENAI_DEPLOYMENT }}"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-log-router
+  labels:
+    app: ai-log-router
+spec:
+  # ClusterIP only. Use `kubectl port-forward` for access.
+  # Do not switch to NodePort/LoadBalancer: /ask has no authentication yet.
+  type: ClusterIP
+  selector:
+    app: ai-log-router
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
